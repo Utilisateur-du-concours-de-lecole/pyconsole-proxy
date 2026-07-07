@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyConsole - Éditeur Python & Débogueur IA</title>
+    
+    <!-- Tailwind CSS pour un design moderne -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Polices Google : Inter pour l'interface, Fira Code pour le code -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- CodeMirror (Éditeur de code pro) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"></script>
+    
+    <!-- FontAwesome pour de superbes icônes -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Chargeur Pyodide (Python dans le navigateur) -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
+
+    <!-- Librairie Marked pour formater les explications du Débogueur IA -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .CodeMirror {
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            height: 100% !important;
+            background-color: #0f172a !important;
+            border-radius: 0.5rem;
+        }
+        .CodeMirror-gutters {
+            background-color: #0f172a !important;
+            border-right: 1px solid #1e293b !important;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content h3 { font-size: 1.1rem; border-left: 3px solid #6366f1; padding-left: 0.5rem; }
+        .markdown-content p { margin-bottom: 0.75rem; color: #cbd5e1; line-height: 1.6; font-size: 0.9rem; }
+        .markdown-content code {
+            font-family: 'Fira Code', monospace;
+            background-color: #1e1b4b;
+            color: #c7d2fe;
+            padding: 0.15rem 0.35rem;
+            border-radius: 0.25rem;
+            font-size: 0.85em;
+        }
+        .markdown-content pre {
+            background-color: #020617;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            border: 1px solid #1e293b;
+        }
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #e2e8f0;
+        }
+        .markdown-content ul {
+            list-style-type: disc;
+            padding-left: 1.25rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+            color: #cbd5e1;
+        }
+        .markdown-content li { margin-bottom: 0.25rem; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(2px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col overflow-hidden">
+
+    <!-- En-tête -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-lg z-10">
+        <div class="flex items-center space-x-3">
+            <div class="bg-amber-500 text-slate-950 p-2 rounded-lg font-bold flex items-center justify-center shadow-md shadow-amber-500/10">
+                <i class="fa-brands fa-python text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-amber-400 to-yellow-200 bg-clip-text text-transparent">PyConsole Pro</h1>
+                <p class="text-xs text-slate-400">Éditeur Python avec Assistant de Débogage IA et Terminal interactif</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <div id="status-indicator" class="flex items-center space-x-2 bg-slate-950 px-4 py-2 rounded-full border border-slate-800 text-xs text-slate-400 transition-all duration-300">
+                <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="status-text">Chargement de Python (Pyodide)...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenu Principal -->
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+        
+        <!-- Barre latérale gauche -->
+        <section class="w-full lg:w-72 bg-slate-900/60 border-b lg:border-b-0 lg:border-r border-slate-800 flex flex-col shrink-0 p-4 space-y-4 overflow-y-auto">
+            <div>
+                <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Modèles de code</h2>
+                <div class="space-y-2">
+                    <button onclick="loadTemplate('hello')" class="w-full text-left bg-slate-800/60 hover:bg-slate-700/80 p-3 rounded-lg border border-slate-700/30 transition flex items-start space-x-3 group">
+                        <span class="text-amber-400 mt-1"><i class="fa-solid fa-play text-xs"></i></span>
+                        <div>
+                            <p class="text-sm font-medium text-slate-200 group-hover:text-amber-400 transition">Bonjour le Monde</p>
+                            <p class="text-xs text-slate-400">Syntaxe de base et affichage simple.</p>
+                        </div>
+                    </button>
+                    <button onclick="loadTemplate('buggy')" class="w-full text-left bg-indigo-950/40 hover:bg-indigo-900/40 p-3 rounded-lg border border-indigo-500/20 transition flex items-start space-x-3 group">
+                        <span class="text-indigo-400 mt-1"><i class="fa-solid fa-bug text-xs"></i></span>
+                        <div>
+                            <p class="text-sm font-medium text-slate-200 group-hover:text-indigo-300 transition">Code Erroné (À tester !)</p>
+                            <p class="text-xs text-indigo-300/70">Un exemple avec des bugs pour tester l'IA.</p>
+                        </div>
+                    </button>
+                    <button onclick="loadTemplate('fibonacci')" class="w-full text-left bg-slate-800/60 hover:bg-slate-700/80 p-3 rounded-lg border border-slate-700/30 transition flex items-start space-x-3 group">
+                        <span class="text-amber-400 mt-1"><i class="fa-solid fa-calculator text-xs"></i></span>
+                        <div>
+                            <p class="text-sm font-medium text-slate-200 group-hover:text-amber-400 transition">Suite de Fibonacci</p>
+                            <p class="text-xs text-slate-400">Génération de nombres de Fibonacci.</p>
+                        </div>
+                    </button>
+                    <button onclick="loadTemplate('interactive')" class="w-full text-left bg-indigo-500/10 hover:bg-indigo-500/20 p-3 rounded-lg border border-indigo-500/30 transition flex items-start space-x-3 group">
+                        <span class="text-indigo-400 mt-1"><i class="fa-solid fa-comments text-xs animate-pulse"></i></span>
+                        <div>
+                            <p class="text-sm font-medium text-slate-200 group-hover:text-indigo-300 transition">Programme Interactif</p>
+                            <p class="text-xs text-indigo-300/80">Utilisation d'input() et int(). Idéal pour tester !</p>
+                        </div>
+                    </button>
+                    <button onclick="loadTemplate('matplotlib_demo')" class="w-full text-left bg-emerald-950/30 hover:bg-emerald-900/40 p-3 rounded-lg border border-emerald-500/20 transition flex items-start space-x-3 group">
+                        <span class="text-emerald-400 mt-1"><i class="fa-solid fa-chart-line text-xs"></i></span>
+                        <div>
+                            <p class="text-sm font-medium text-slate-200 group-hover:text-emerald-300 transition">Numpy & Matplotlib</p>
+                            <p class="text-xs text-slate-400">Générer et afficher un vrai graphique !</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-slate-800">
+                <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Guide d'utilisation</h2>
+                <ul class="space-y-2 text-xs text-slate-400">
+                    <li class="flex items-center space-x-2">
+                        <i class="fa-solid fa-check text-emerald-500 flex-shrink-0"></i>
+                        <span>Écrivez votre code Python à droite.</span>
+                    </li>
+                    <li class="flex items-center space-x-2">
+                        <i class="fa-solid fa-wand-magic-sparkles text-indigo-400 flex-shrink-0"></i>
+                        <span>Cliquez sur <strong>Débogueur IA</strong> pour l'analyser.</span>
+                    </li>
+                    <li class="flex items-center space-x-2">
+                        <i class="fa-solid fa-check text-emerald-500 flex-shrink-0"></i>
+                        <span>Cliquez sur <strong>Exécuter (Ctrl+Enter)</strong> pour le lancer.</span>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="mt-auto pt-4 text-center">
+                <p class="text-[10px] text-slate-500">Propulsé par Pyodide WASM & Gemini via Proxy</p>
+            </div>
+        </section>
+
+        <!-- Zone de travail principale -->
+        <section class="flex-1 flex flex-col min-w-0">
+            
+            <div class="flex-1 flex flex-col p-4 min-h-[50%] relative">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold flex items-center space-x-2 text-slate-300">
+                        <i class="fa-solid fa-code text-amber-500"></i>
+                        <span>Éditeur principal (script.py)</span>
+                    </span>
+                    
+                    <div class="flex items-center space-x-2">
+                        <button id="debug-btn" onclick="debugCodeWithAI()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg transition-all duration-200 shadow-md shadow-indigo-600/20 flex items-center space-x-2 text-sm">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>Débogueur IA</span>
+                        </button>
+                        
+                        <button id="run-btn" disabled onclick="runCode()" class="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all duration-200 shadow-md shadow-amber-500/10 flex items-center space-x-2 text-sm">
+                            <i class="fa-solid fa-play"></i>
+                            <span>Exécuter</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex-1 border border-slate-800 rounded-lg overflow-hidden shadow-2xl relative">
+                    <textarea id="editor" class="hidden"></textarea>
+                </div>
+            </div>
+
+            <div class="h-64 lg:h-72 border-t border-slate-800 bg-slate-950 p-4 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold flex items-center space-x-2 text-slate-300">
+                        <i class="fa-solid fa-terminal text-emerald-500"></i>
+                        <span>Console de sortie</span>
+                    </span>
+                    
+                    <div class="flex space-x-2">
+                        <button onclick="clearConsole()" class="text-slate-400 hover:text-slate-200 bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-md border border-slate-800 text-xs transition flex items-center space-x-1.5">
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span>Effacer</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="console-output" class="flex-1 bg-slate-900/40 rounded-lg p-3 font-mono text-sm overflow-y-auto border border-slate-800 text-slate-300 select-text whitespace-pre-wrap leading-relaxed">Bienvenue sur PyConsole ! Écrivez du code en haut, utilisez le Débogueur IA pour vous relire, et lancez l'exécution avec "Exécuter" !</div>
+            </div>
+        </section>
+
+        <!-- Panneau latéral droit : Assistant Débogage IA -->
+        <aside id="ai-panel" class="hidden w-full lg:w-[450px] bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col shrink-0 p-4 overflow-y-auto shadow-2xl relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-robot text-indigo-400 text-lg"></i>
+                    <div>
+                        <h3 class="font-bold text-slate-100 text-sm">Assistant de Débogage IA</h3>
+                        <p class="text-[10px] text-slate-400">Analyse de syntaxe & logique</p>
+                    </div>
+                </div>
+                <button onclick="toggleAIPanel(false)" class="text-slate-400 hover:text-slate-100 p-1 rounded-lg hover:bg-slate-800 transition">
+                    <i class="fa-solid fa-times text-sm"></i>
+                </button>
+            </div>
+
+            <div id="ai-initial-state" class="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4">
+                <div class="w-16 h-16 bg-indigo-950/60 rounded-full flex items-center justify-center border border-indigo-500/20 text-indigo-400 animate-pulse">
+                    <i class="fa-solid fa-wand-magic-sparkles text-2xl"></i>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-slate-200">Prêt pour l'analyse</h4>
+                    <p class="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Saisissez votre script Python et cliquez sur "Débogueur IA" pour lancer la recherche d'erreurs.</p>
+                </div>
+            </div>
+
+            <div id="ai-loading-state" class="hidden flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4">
+                <div class="relative w-16 h-16">
+                    <div class="absolute inset-0 bg-indigo-500 rounded-full opacity-25 animate-ping"></div>
+                    <div class="w-16 h-16 bg-indigo-950 rounded-full flex items-center justify-center border-2 border-indigo-500 text-indigo-400 relative z-10">
+                        <i class="fa-solid fa-magnifying-glass-chart text-xl animate-bounce"></i>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-slate-200">Analyse IA en cours...</h4>
+                    <p class="text-xs text-indigo-400/80 mt-1" id="ai-loading-step">Connexion au proxy...</p>
+                </div>
+                <div class="w-48 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-indigo-500 h-1.5 rounded-full animate-[loading_2s_ease-in-out_infinite]" style="width: 75%"></div>
+                </div>
+            </div>
+
+            <div id="ai-result-state" class="hidden space-y-4 flex-1 flex flex-col">
+                <div id="ai-status-banner" class="p-3.5 rounded-lg flex items-start space-x-3 border"></div>
+
+                <div class="bg-slate-950/60 rounded-lg p-4 border border-slate-800">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Explications de l'Assistant</h4>
+                    <div id="ai-explanation" class="markdown-content"></div>
+                </div>
+
+                <div id="ai-corrected-section" class="hidden flex flex-col flex-1 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Proposition de correction</span>
+                        <button onclick="copyCorrectedCode()" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center space-x-1">
+                            <i class="fa-solid fa-copy"></i>
+                            <span>Copier</span>
+                        </button>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-indigo-950 font-mono text-xs overflow-x-auto text-slate-200 whitespace-pre leading-relaxed relative">
+                        <code id="ai-corrected-code" class="block"></code>
+                    </div>
+                    
+                    <button onclick="applyAICorrection()" class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold py-3 rounded-lg transition-all duration-200 shadow-md shadow-indigo-600/20 flex items-center justify-center space-x-2 text-sm mt-2">
+                        <i class="fa-solid fa-magic"></i>
+                        <span>🔧 Appliquer la correction</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <div id="toast" class="fixed bottom-6 right-6 bg-slate-900 border border-slate-800 text-slate-200 px-4 py-3 rounded-lg shadow-xl translate-y-20 opacity-0 transition-all duration-300 flex items-center space-x-3 pointer-events-none z-50">
+        <span id="toast-icon" class="text-amber-500"><i class="fa-solid fa-circle-info"></i></span>
+        <span id="toast-message" class="text-sm font-medium">Message de notification</span>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        let pyodideInstance = null;
+        let codeEditor = null;
+        let correctedCodeGlobal = "";
+        let inputResponses = [];
+        let currentInputIndex = 0;
+        let isReRunning = false;
+        let activeConsoleContainer = null;
+
+        // --- URL du proxy (change si tu le déploies plus tard) ---
+        const PROXY_URL = 'http://localhost:8080';
+
+        // --- Templates ---
+        const templates = {
+            hello: `# Programme Simple : Bonjour le Monde\n\nom = "Développeur"\nprint(f"Bonjour, {nom} !")\nprint("Bienvenue dans votre console Python interactive.")\n\n# Calcul simple\na = 15\nb = 27\nprint(f"Le résultat de {a} + {b} est égal à {a + b}")\n`,
+            buggy: `# Code volontairement erroné pour tester le Débogueur IA !\n\ndef calculer_moyenne(notes)\n    # Erreur 1 : Il manque les deux-points à la fin du "def"\n    somme = 0\n    for n in notes\n        # Erreur 2 : Il manque aussi les deux-points sur le "for"\n        somme = somme + n\n    \n    # Erreur 3 : Division par zéro potentielle si la liste est vide\n    moyenne = somme / len(notes)\n    return moyenne\n\nclasse_notes = [15, 18, 12, "absent"] \n# Erreur 4 : La liste contient une chaîne de caractères ("absent") ce qui provoquera une erreur d'addition !\n\nmoyenne_classe = calculer_moyenne(classe_notes)\nprint("Moyenne : " + moyenne_classe)\n# Erreur 5 : Concaténation de chaîne de caractères et float sans conversion !\n`,
+            fibonacci: `# Algorithme : Suite de Fibonacci\n\ndef fibonacci(n):\n    """Génère la suite de Fibonacci jusqu'à n éléments"""\n    suite = [0, 1]\n    while len(suite) < n:\n        suite.append(suite[-1] + suite[-2])\n    return suite[:n]\n\n# Appel de la fonction pour les 10 premiers nombres\nnombres = 10\nresultat = fibonacci(nombres)\nprint(f"Les {nombres} premiers nombres de la suite de Fibonacci :")\nprint(resultat)\n`,
+            interactive: `# Programme interactif (Calcul de l'IMC avec conversion robuste)\n\nprint("--- Calculateur d'Indice de Masse Corporelle (IMC) ---")\n\ntry:\n    # Les entrées input() s'exécutent de façon 100% interactive dans la console !\n    nom = input("Entrez votre prénom : ")\n    age = int(input("Entrez votre âge (ex: 25) : "))\n    poids = float(input("Entrez votre poids en kg (ex: 72.5) : "))\n    taille = float(input("Entrez votre taille en mètres (ex: 1.75) : "))\n    \n    # Calcul de l'IMC\n    imc = poids / (taille ** 2)\n    \n    print(f"\\n[Fiche de {nom} - {age} ans]")\n    print(f"Poids : {poids} kg | Taille : {taille} m")\n    print(f"Votre IMC calculé est de : {imc:.2f}")\n    \n    # Diagnostic\n    if imc < 18.5:\n        print("Catégorie : Insuffisance pondérale")\n    elif 18.5 <= imc < 25:\n        print("Catégorie : Corpulence normale (Félicitations !) 🎉")\n    elif 25 <= imc < 30:\n        print("Catégorie : Surpoids")\n    else:\n        print("Catégorie : Obésité")\n        \nexcept ValueError as err:\n    print(f"\\n❌ Erreur de conversion : {err}")\n    print("Veuillez entrer des nombres entiers pour l'âge et décimaux pour le poids/taille.")\n`,
+            matplotlib_demo: `# Visualisation interactive avec NumPy & Matplotlib\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("🚀 [1/3] Génération de vagues de données avec NumPy...")\nx = np.linspace(0, 10, 150)\ny = np.sin(x) + np.random.normal(0, 0.15, 150)\n\nprint("📊 [2/3] Configuration du graphique Matplotlib...")\nplt.figure(figsize=(7, 3.5))\n\nplt.scatter(x, y, color="#f59e0b", alpha=0.7, label="Données observées")\nplt.plot(x, np.sin(x), color="#6366f1", linewidth=2.5, label="Courbe théorique sin(x)")\n\nplt.title("Analyse Harmonique - Signal Bruité", color="white", fontsize=11, fontweight="bold")\nplt.xlabel("Axe du temps (s)", color="#94a3b8", fontsize=9)\nplt.ylabel("Amplitude", color="#94a3b8", fontsize=9)\nplt.grid(True, linestyle="--", alpha=0.2)\nplt.legend(facecolor="#1e293b", edgecolor="#334155", labelcolor="white")\n\nfig = plt.gcf()\nax = plt.gca()\nfig.patch.set_facecolor('#0f172a')\nax.set_facecolor('#020617')\nax.tick_params(colors='#94a3b8', labelsize=8)\nfor spine in ax.spines.values():\n    spine.set_color('#334155')\n\nprint("✨ [3/3] Affichage en cours...")\n`
+        };
+
+        // --- Initialisation ---
+        window.onload = async function() {
+            codeEditor = CodeMirror.fromTextArea(document.getElementById('editor'), {
+                mode: 'python',
+                theme: 'dracula',
+                lineNumbers: true,
+                indentUnit: 4,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                viewportMargin: Infinity
+            });
+
+            codeEditor.setValue(templates.hello);
+
+            codeEditor.setOption("extraKeys", {
+                "Ctrl-Enter": function() {
+                    runCode();
+                }
+            });
+
+            await initPyodide();
+        };
+
+        window.getCurrentInputIndex = () => currentInputIndex;
+        window.getInputResponsesLength = () => inputResponses.length;
+        window.getInputResponse = (idx) => inputResponses[idx];
+        window.incrementInputIndex = () => { currentInputIndex++; };
+
+        window.appendInputToConsole = function(promptText, userResponse) {
+            if (!activeConsoleContainer) return;
+            
+            const container = document.createElement('div');
+            container.className = 'flex flex-row items-center space-x-2 py-1 border-l-2 border-emerald-500 pl-3 my-1.5 bg-emerald-950/20 rounded-r font-mono text-sm animate-fade-in';
+            
+            const promptSpan = document.createElement('span');
+            promptSpan.className = 'text-amber-400 font-semibold';
+            promptSpan.textContent = promptText;
+            
+            const valSpan = document.createElement('span');
+            valSpan.className = 'text-emerald-400 font-bold bg-slate-950/60 px-2 py-0.5 rounded border border-slate-800';
+            valSpan.textContent = userResponse;
+            
+            container.appendChild(promptSpan);
+            container.appendChild(valSpan);
+            activeConsoleContainer.appendChild(container);
+        }
+
+        window.displayPlot = function(base64Data) {
+            const container = activeConsoleContainer || document.getElementById('console-output');
+            
+            const div = document.createElement('div');
+            div.className = 'my-4 bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex flex-col items-center justify-center space-y-2 shadow-inner';
+            
+            const title = document.createElement('span');
+            title.className = 'text-[11px] text-slate-500 font-semibold uppercase tracking-wider flex items-center space-x-1';
+            title.innerHTML = '<i class="fa-solid fa-chart-line text-emerald-400"></i> <span>Graphique généré par Matplotlib</span>';
+            
+            const img = document.createElement('img');
+            img.src = `data:image/png;base64,${base64Data}`;
+            img.className = 'max-w-full h-auto rounded-lg border border-slate-800 shadow-md transition hover:scale-[1.01] duration-200';
+            
+            div.appendChild(title);
+            div.appendChild(img);
+            container.appendChild(div);
+            
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        async function initPyodide() {
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            const runBtn = document.getElementById('run-btn');
+
+            try {
+                pyodideInstance = await loadPyodide({
+                    stdout: (text) => {
+                        appendToConsole(text, 'stdout');
+                    },
+                    stderr: (text) => {
+                        appendToConsole(text, 'stderr');
+                    }
+                });
+
+                await pyodideInstance.runPythonAsync(`
+import sys
+import builtins
+import js
+
+def custom_input(prompt_text="Saisie :"):
+    idx = int(js.getCurrentInputIndex())
+    total_responses = int(js.getInputResponsesLength())
+    
+    if idx < total_responses:
+        val = str(js.getInputResponse(idx))
+        js.incrementInputIndex()
+        js.appendInputToConsole(prompt_text, val)
+        return val
+    else:
+        raise Exception(f"__PAUSE_INPUT_PROMPT__:{prompt_text}")
+
+builtins.input = custom_input
+`);
+
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-none";
+                statusText.innerText = "Python est prêt !";
+                statusText.className = "text-emerald-400 text-xs font-medium";
+                runBtn.disabled = false;
+                
+                showToast("Moteur Python initialisé avec succès !", "success");
+
+            } catch (error) {
+                console.error(error);
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500 animate-none";
+                statusText.innerText = "Erreur de chargement";
+                statusText.className = "text-rose-400 text-xs font-medium";
+                appendToConsole("Erreur d'initialisation de l'interpréteur Python :\n" + error.message, 'stderr');
+            }
+        }
+
+        function loadTemplate(key) {
+            if (templates[key] !== undefined) {
+                codeEditor.setValue(templates[key]);
+                showToast(`Modèle "${key}" chargé !`, "info");
+                resetAIPanel();
+            }
+        }
+
+        function appendToConsole(text, type = 'stdout') {
+            const target = activeConsoleContainer || document.getElementById('console-output');
+            
+            const span = document.createElement('span');
+            if (type === 'stderr') {
+                span.className = 'text-rose-400 font-semibold';
+            } else if (type === 'system') {
+                span.className = 'text-cyan-400 font-medium italic';
+            } else {
+                span.className = 'text-slate-100';
+            }
+            
+            span.textContent = text;
+            target.appendChild(span);
+            
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        function clearConsole() {
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.innerHTML = '';
+            activeConsoleContainer = null;
+            inputResponses = [];
+            isReRunning = false;
+            showToast("Console vidée", "info");
+        }
+
+        function renderConsoleInputPrompt(promptText) {
+            if (!activeConsoleContainer) return;
+
+            const oldContainer = document.getElementById('interactive-prompt-container');
+            if (oldContainer) oldContainer.remove();
+
+            const inputDiv = document.createElement('div');
+            inputDiv.id = "interactive-prompt-container";
+            inputDiv.className = 'flex flex-row items-center space-x-2 py-1.5 bg-slate-900 border border-indigo-500/30 rounded px-3 my-2 animate-fade-in font-mono shadow-md';
+
+            const promptSpan = document.createElement('span');
+            promptSpan.className = 'text-amber-400 font-semibold text-sm shrink-0';
+            promptSpan.textContent = promptText;
+
+            const inputField = document.createElement('input');
+            inputField.type = 'text';
+            inputField.id = 'console-input-field';
+            inputField.className = 'bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-sm px-3 py-1 rounded focus:outline-none focus:border-indigo-500 flex-1 min-w-0';
+            inputField.placeholder = "Saisissez votre réponse...";
+            inputField.autocomplete = 'off';
+
+            const submitBtn = document.createElement('button');
+            submitBtn.className = 'bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3 py-1 rounded text-sm transition shrink-0 shadow-sm flex items-center justify-center';
+            submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i>';
+
+            inputDiv.appendChild(promptSpan);
+            inputDiv.appendChild(inputField);
+            inputDiv.appendChild(submitBtn);
+
+            activeConsoleContainer.appendChild(inputDiv);
+
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+            setTimeout(() => {
+                inputField.focus();
+            }, 50);
+
+            const submitValue = () => {
+                const val = inputField.value;
+                inputDiv.remove();
+                
+                inputResponses.push(val);
+                isReRunning = true;
+                runCode();
+            };
+
+            inputField.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitValue();
+                }
+            });
+
+            submitBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                submitValue();
+            });
+        }
+
+        async function runCode() {
+            if (!pyodideInstance) {
+                showToast("Le moteur Python n'est pas encore prêt.", "error");
+                return;
+            }
+
+            const code = codeEditor.getValue();
+            if (!code.trim()) {
+                showToast("Écrivez du code avant d'exécuter !", "info");
+                return;
+            }
+
+            const runBtn = document.getElementById('run-btn');
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+
+            if (!isReRunning) {
+                inputResponses = [];
+                currentInputIndex = 0;
+                
+                const consoleOutput = document.getElementById('console-output');
+                activeConsoleContainer = document.createElement('div');
+                activeConsoleContainer.className = "border-l-2 border-slate-800 pl-3 my-3 space-y-1 py-1 bg-slate-900/10 rounded-r";
+                
+                const header = document.createElement('div');
+                header.className = "text-xs text-slate-500 font-semibold mb-2 flex items-center space-x-1 border-b border-slate-900/60 pb-1";
+                header.innerHTML = `<i class="fa-solid fa-play text-emerald-500 text-[10px]"></i> <span>Exécution à ${new Date().toLocaleTimeString()}</span>`;
+                activeConsoleContainer.appendChild(header);
+                
+                consoleOutput.appendChild(activeConsoleContainer);
+            } else {
+                const header = activeConsoleContainer.firstElementChild;
+                activeConsoleContainer.innerHTML = '';
+                if (header) activeConsoleContainer.appendChild(header);
+                
+                currentInputIndex = 0;
+            }
+
+            runBtn.disabled = true;
+            runBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> <span>Calcul...</span>`;
+            statusDot.className = "w-2.5 h-2.5 rounded-full bg-sky-500 animate-pulse";
+            statusText.innerText = "Exécution en cours...";
+
+            setTimeout(async () => {
+                try {
+                    await pyodideInstance.loadPackagesFromImports(code);
+                    await pyodideInstance.runPythonAsync(code);
+                    
+                    const postMatplotlibCheck = `
+import sys
+if 'matplotlib' in sys.modules:
+    try:
+        import matplotlib.pyplot as plt
+        if plt.get_fignums():
+            import io
+            import base64
+            import js
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', bbox_inches='tight', dpi=140)
+            buf.seek(0)
+            img_str = base64.b64encode(buf.read()).decode('utf-8')
+            plt.close('all')
+            js.displayPlot(img_str)
+    except Exception as e:
+        js.console.warn("Erreur d'export matplotlib : " + str(e))
+`;
+                    await pyodideInstance.runPythonAsync(postMatplotlibCheck);
+
+                    statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+                    statusText.innerText = "Exécution réussie";
+                    statusText.className = "text-emerald-400 text-xs";
+                    isReRunning = false;
+
+                } catch (err) {
+                    const errMsg = err.message || "";
+                    
+                    if (errMsg.includes("__PAUSE_INPUT_PROMPT__")) {
+                        const parts = errMsg.split("__PAUSE_INPUT_PROMPT__:");
+                        const promptText = parts[1] ? parts[1].split("\n")[0] : "Entrée :";
+                        
+                        renderConsoleInputPrompt(promptText);
+                        
+                        statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+                        statusText.innerText = "En attente d'une saisie...";
+                        statusText.className = "text-amber-400 text-xs font-semibold";
+                    } else {
+                        appendToConsole(errMsg + '\n', 'stderr');
+                        statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+                        statusText.innerText = "Erreur détectée";
+                        statusText.className = "text-rose-400 text-xs";
+                        isReRunning = false;
+                    }
+                } finally {
+                    runBtn.disabled = false;
+                    runBtn.innerHTML = `<i class="fa-solid fa-play"></i> <span>Exécuter</span>`;
+                }
+            }, 50);
+        }
+
+        function toggleAIPanel(show) {
+            const panel = document.getElementById('ai-panel');
+            if (show) {
+                panel.classList.remove('hidden');
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+
+        function resetAIPanel() {
+            document.getElementById('ai-initial-state').classList.remove('hidden');
+            document.getElementById('ai-loading-state').classList.add('hidden');
+            document.getElementById('ai-result-state').classList.add('hidden');
+        }
+
+        // ============================================================
+        // 🚀 FONCTION DÉBOGUEUR IA - VERSION PROXY (SÉCURISÉE)
+        // ============================================================
+        async function debugCodeWithAI() {
+            const code = codeEditor.getValue().trim();
+            if (!code) {
+                showToast("Votre éditeur est vide ! Rien à déboguer.", "info");
+                return;
+            }
+
+            toggleAIPanel(true);
+            const initial = document.getElementById('ai-initial-state');
+            const loading = document.getElementById('ai-loading-state');
+            const result = document.getElementById('ai-result-state');
+            const loadingStep = document.getElementById('ai-loading-step');
+
+            initial.classList.add('hidden');
+            result.classList.add('hidden');
+            loading.classList.remove('hidden');
+            loadingStep.innerText = "Connexion au proxy...";
+
+            try {
+                // 🔥 Appel au proxy (SANS clé API dans le code !)
+                const response = await fetch(`${PROXY_URL}/debug`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ code: code })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erreur HTTP: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // L'analyse a réussi
+                    loading.classList.add('hidden');
+                    result.classList.remove('hidden');
+                    
+                    const banner = document.getElementById('ai-status-banner');
+                    banner.className = "p-3.5 rounded-lg flex items-start space-x-3 border border-emerald-500/20 bg-emerald-950/40 text-emerald-400";
+                    banner.innerHTML = `
+                        <div class="mt-0.5"><i class="fa-solid fa-circle-check text-lg"></i></div>
+                        <div>
+                            <h5 class="font-bold text-xs uppercase tracking-wider">Analyse terminée</h5>
+                            <p class="text-xs text-emerald-300/80 mt-0.5">L'IA a analysé ton code avec succès !</p>
+                        </div>
+                    `;
+                    
+                    const explanationDiv = document.getElementById('ai-explanation');
+                    explanationDiv.innerHTML = marked.parse(data.analysis);
+                    
+                    // Masquer la section de correction (car on n'a pas de correction structurée)
+                    document.getElementById('ai-corrected-section').classList.add('hidden');
+                    
+                    showToast("Analyse IA terminée !", "success");
+                } else {
+                    // Erreur de l'API
+                    loading.classList.add('hidden');
+                    initial.classList.remove('hidden');
+                    showToast("Erreur : " + data.error, "error");
+                }
+
+            } catch (error) {
+                console.error("Erreur proxy:", error);
+                loading.classList.add('hidden');
+                initial.classList.remove('hidden');
+                
+                let errorMsg = "Erreur de connexion au proxy";
+                if (error.message.includes("Failed to fetch")) {
+                    errorMsg = "❌ Le proxy n'est pas lancé ! Ouvre un terminal et tape 'python proxy.py'";
+                } else {
+                    errorMsg = "❌ " + error.message;
+                }
+                
+                showToast(errorMsg, "error");
+                appendToConsole("\n[Système IA] " + errorMsg + "\n", 'stderr');
+            }
+        }
+
+        function applyAICorrection() {
+            if (correctedCodeGlobal) {
+                codeEditor.setValue(correctedCodeGlobal);
+                showToast("Correction IA appliquée !", "success");
+                
+                const banner = document.getElementById('ai-status-banner');
+                banner.className = "p-3.5 rounded-lg flex items-start space-x-3 border border-emerald-500/20 bg-emerald-950/40 text-emerald-400";
+                banner.innerHTML = `
+                    <div class="mt-0.5"><i class="fa-solid fa-circle-check text-lg"></i></div>
+                    <div>
+                        <h5 class="font-bold text-xs uppercase tracking-wider">Correction appliquée !</h5>
+                        <p class="text-xs text-emerald-300/80 mt-0.5">Le code propre est maintenant dans l'éditeur. Vous pouvez l'exécuter.</p>
+                    </div>
+                `;
+                document.getElementById('ai-corrected-section').classList.add('hidden');
+            }
+        }
+
+        function copyCorrectedCode() {
+            if (correctedCodeGlobal) {
+                const el = document.createElement('textarea');
+                el.value = correctedCodeGlobal;
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                showToast("Code copié !", "success");
+            }
+        }
+
+        function showToast(message, type = "info") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.innerText = message;
+
+            if (type === "success") {
+                toastIcon.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500 text-lg"></i>`;
+            } else if (type === "error") {
+                toastIcon.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-rose-500 text-lg"></i>`;
+            } else {
+                toastIcon.innerHTML = `<i class="fa-solid fa-circle-info text-amber-500 text-lg"></i>`;
+            }
+
+            toast.className = toast.className.replace("translate-y-20 opacity-0", "translate-y-0 opacity-100");
+
+            setTimeout(() => {
+                toast.className = toast.className.replace("translate-y-0 opacity-100", "translate-y-20 opacity-0");
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
