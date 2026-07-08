@@ -41,17 +41,20 @@ async def debug_code(request: CodeRequest):
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
                 json={
                     "contents": [{
                         "parts": [{"text": prompt}]
                     }]
                 },
-                timeout=30.0
+                timeout=60.0
             )
             
             if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Erreur avec l'API Gemini")
+                return {
+                    "success": False,
+                    "error": f"Erreur API Gemini: {response.status_code} - {response.text}"
+                }
             
             data = response.json()
             return {
@@ -69,6 +72,10 @@ async def debug_code(request: CodeRequest):
 async def root():
     return {"message": "Proxy Gemini fonctionne !"}
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
